@@ -1,0 +1,35 @@
+let lookback = 24h;
+let UpwindSource = union isfuzzy=true (datatable(TimeGenerated:datetime)[]), UpwindCatalogAssets_CL, UpwindLogsAssets_CL;
+UpwindSource
+| where TimeGenerated >= ago(lookback)
+| extend
+    AssetName = tostring(coalesce(column_ifexists("AssetName", ""), column_ifexists("name", ""))),
+    CloudProvider = tostring(coalesce(column_ifexists("CloudProvider", ""), column_ifexists("cloud_provider", ""))),
+    CloudAccountId = tostring(coalesce(column_ifexists("CloudAccountId", ""), column_ifexists("cloud_account_id", ""))),
+    Region = tostring(coalesce(column_ifexists("Region", ""), column_ifexists("region", ""))),
+    ResourceType = tostring(coalesce(column_ifexists("ResourceType", ""), column_ifexists("resource_type", ""))),
+    ProtectedBy = tostring(coalesce(column_ifexists("ProtectedBy", ""), column_ifexists("protected_by", ""))),
+    PublicIps = todynamic(tostring(coalesce(column_ifexists("PublicIpAddresses", ""), column_ifexists("public_ip_addresses", "")))),
+    SensitiveAtRest = todynamic(tostring(coalesce(column_ifexists("SensitiveDataAtRest", ""), column_ifexists("sensitive_data_at_rest", "")))),
+    SensitiveInTransit = todynamic(tostring(coalesce(column_ifexists("SensitiveDataInTransit", ""), column_ifexists("sensitive_data_in_transit", "")))),
+    NetworkRisk = todynamic(tostring(coalesce(column_ifexists("NetworkRisk", ""), column_ifexists("network_risk", "")))),
+    DetectionRisk = todynamic(tostring(coalesce(column_ifexists("DetectionRisk", ""), column_ifexists("detection_risk", "")))),
+    VulnerabilityRisk = todynamic(tostring(coalesce(column_ifexists("VulnerabilityRisk", ""), column_ifexists("vulnerability_risk", "")))),
+    HighPrivilegeRisk = todynamic(tostring(coalesce(column_ifexists("HighPrivilegeRisk", ""), column_ifexists("high_privilege_risk", ""))))
+| extend
+    HasSensitiveAtRest = tobool(SensitiveAtRest.has_sensitive_data),
+    HasSensitiveInTransit = tobool(SensitiveInTransit.has_sensitive_data),
+    SensitiveTypesAtRest = tostring(SensitiveAtRest.types),
+    SensitiveTypesInTransit = tostring(SensitiveInTransit.types),
+    RecordsEstimate = tolong(SensitiveAtRest.records_estimate),
+    NetworkLevel = tostring(NetworkRisk.level),
+    DetectionLevel = tostring(DetectionRisk.level),
+    VulnerabilityLevel = tostring(VulnerabilityRisk.level),
+    PrivilegeLevel = tostring(HighPrivilegeRisk.level),
+    HasPublicIp = array_length(PublicIps) > 0,
+    Unprotected = isempty(ProtectedBy) or ProtectedBy =~ "none"
+| where HasSensitiveAtRest or HasSensitiveInTransit
+| extend CriticalOrHighRisk = NetworkLevel in ("Critical", "High") or DetectionLevel in ("Critical", "High") or VulnerabilityLevel in ("Critical", "High") or PrivilegeLevel in ("Critical", "High")
+| project TimeGenerated, AssetName, CloudProvider, CloudAccountId, Region, ResourceType, SensitiveTypesAtRest, SensitiveTypesInTransit, RecordsEstimate, HasPublicIp, Unprotected, NetworkLevel, DetectionLevel, VulnerabilityLevel, PrivilegeLevel, CriticalOrHighRisk
+| order by CriticalOrHighRisk desc, RecordsEstimate desc
+| take 50

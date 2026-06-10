@@ -1,0 +1,50 @@
+let lookback = 24h;
+let UpwindSource = union isfuzzy=true (datatable(TimeGenerated:datetime)[]), UpwindCatalogAssets_CL, UpwindLogsAssets_CL;
+UpwindSource
+| where TimeGenerated >= ago(lookback)
+| extend
+    AssetName = tostring(coalesce(column_ifexists("AssetName", ""), column_ifexists("name", ""))),
+    CloudProvider = tostring(coalesce(column_ifexists("CloudProvider", ""), column_ifexists("cloud_provider", ""))),
+    CloudAccountId = tostring(coalesce(column_ifexists("CloudAccountId", ""), column_ifexists("cloud_account_id", ""))),
+    Region = tostring(coalesce(column_ifexists("Region", ""), column_ifexists("region", ""))),
+    Category = tostring(coalesce(column_ifexists("Category", ""), column_ifexists("category", ""))),
+    ResourceType = tostring(coalesce(column_ifexists("ResourceType", ""), column_ifexists("resource_type", ""))),
+    ProtectedBy = tostring(coalesce(column_ifexists("ProtectedBy", ""), column_ifexists("protected_by", ""))),
+    PublicIps = todynamic(tostring(coalesce(column_ifexists("PublicIpAddresses", ""), column_ifexists("public_ip_addresses", "")))),
+    NetworkRisk = todynamic(tostring(coalesce(column_ifexists("NetworkRisk", ""), column_ifexists("network_risk", "")))),
+    DetectionRisk = todynamic(tostring(coalesce(column_ifexists("DetectionRisk", ""), column_ifexists("detection_risk", "")))),
+    VulnerabilityRisk = todynamic(tostring(coalesce(column_ifexists("VulnerabilityRisk", ""), column_ifexists("vulnerability_risk", "")))),
+    HighPrivilegeRisk = todynamic(tostring(coalesce(column_ifexists("HighPrivilegeRisk", ""), column_ifexists("high_privilege_risk", "")))),
+    SensitiveAtRest = todynamic(tostring(coalesce(column_ifexists("SensitiveDataAtRest", ""), column_ifexists("sensitive_data_at_rest", "")))),
+    SensitiveInTransit = todynamic(tostring(coalesce(column_ifexists("SensitiveDataInTransit", ""), column_ifexists("sensitive_data_in_transit", ""))))
+| extend
+    NetworkLevel = tostring(NetworkRisk.level),
+    DetectionLevel = tostring(DetectionRisk.level),
+    VulnerabilityLevel = tostring(VulnerabilityRisk.level),
+    PrivilegeLevel = tostring(HighPrivilegeRisk.level),
+    NetworkScore = toint(NetworkRisk.score),
+    DetectionScore = toint(DetectionRisk.score),
+    VulnerabilityScore = toint(VulnerabilityRisk.score),
+    PrivilegeScore = toint(HighPrivilegeRisk.score),
+    HasPublicIp = array_length(PublicIps) > 0,
+    HasSensitiveAtRest = tobool(SensitiveAtRest.has_sensitive_data),
+    HasSensitiveInTransit = tobool(SensitiveInTransit.has_sensitive_data),
+    Unprotected = isempty(ProtectedBy) or ProtectedBy =~ "none"
+| summarize
+    Assets = count(),
+    CriticalRiskAssets = countif(NetworkLevel == "Critical" or DetectionLevel == "Critical" or VulnerabilityLevel == "Critical" or PrivilegeLevel == "Critical"),
+    HighRiskAssets = countif(NetworkLevel == "High" or DetectionLevel == "High" or VulnerabilityLevel == "High" or PrivilegeLevel == "High"),
+    InternetFacingAssets = countif(HasPublicIp),
+    SensitiveAtRestAssets = countif(HasSensitiveAtRest),
+    SensitiveInTransitAssets = countif(HasSensitiveInTransit),
+    UnprotectedAssets = countif(Unprotected),
+    AverageNetworkScore = avg(NetworkScore),
+    AverageDetectionScore = avg(DetectionScore),
+    AverageVulnerabilityScore = avg(VulnerabilityScore),
+    AveragePrivilegeScore = avg(PrivilegeScore),
+    Categories = make_set(Category, 15),
+    ResourceTypes = make_set(ResourceType, 15),
+    Accounts = make_set(CloudAccountId, 15),
+    Regions = make_set(Region, 15)
+    by CloudProvider
+| order by Assets desc

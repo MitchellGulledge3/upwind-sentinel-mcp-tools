@@ -1,0 +1,26 @@
+let lookback = 24h;
+let UpwindSource = union isfuzzy=true (datatable(TimeGenerated:datetime)[]), UpwindCatalogAssets_CL, UpwindLogsAssets_CL;
+UpwindSource
+| where TimeGenerated >= ago(lookback)
+| extend
+    AssetName = tostring(coalesce(column_ifexists("AssetName", ""), column_ifexists("name", ""))),
+    CloudProvider = tostring(coalesce(column_ifexists("CloudProvider", ""), column_ifexists("cloud_provider", ""))),
+    CloudAccountId = tostring(coalesce(column_ifexists("CloudAccountId", ""), column_ifexists("cloud_account_id", ""))),
+    Region = tostring(coalesce(column_ifexists("Region", ""), column_ifexists("region", ""))),
+    ResourceType = tostring(coalesce(column_ifexists("ResourceType", ""), column_ifexists("resource_type", ""))),
+    PublicIps = todynamic(tostring(coalesce(column_ifexists("PublicIpAddresses", ""), column_ifexists("public_ip_addresses", "")))),
+    NetworkRisk = todynamic(tostring(coalesce(column_ifexists("NetworkRisk", ""), column_ifexists("network_risk", "")))),
+    VulnerabilityRisk = todynamic(tostring(coalesce(column_ifexists("VulnerabilityRisk", ""), column_ifexists("vulnerability_risk", "")))),
+    HighPrivilegeRisk = todynamic(tostring(coalesce(column_ifexists("HighPrivilegeRisk", ""), column_ifexists("high_privilege_risk", ""))))
+| extend
+    PrivilegeLevel = tostring(HighPrivilegeRisk.level),
+    PrivilegeScore = toint(HighPrivilegeRisk.score),
+    PrivilegeReason = tostring(HighPrivilegeRisk.reason),
+    NetworkLevel = tostring(NetworkRisk.level),
+    VulnerabilityLevel = tostring(VulnerabilityRisk.level),
+    HasPublicIp = array_length(PublicIps) > 0
+| where PrivilegeLevel in ("Critical", "High")
+| extend BlastRadiusScore = PrivilegeScore + iff(HasPublicIp, 25, 0) + iff(NetworkLevel in ("Critical", "High"), 15, 0) + iff(VulnerabilityLevel in ("Critical", "High"), 15, 0)
+| project TimeGenerated, AssetName, CloudProvider, CloudAccountId, Region, ResourceType, PrivilegeLevel, PrivilegeScore, PrivilegeReason, HasPublicIp, NetworkLevel, VulnerabilityLevel, BlastRadiusScore
+| order by BlastRadiusScore desc
+| take 50

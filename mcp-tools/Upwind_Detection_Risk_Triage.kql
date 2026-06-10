@@ -1,0 +1,32 @@
+let lookback = 24h;
+let UpwindSource = union isfuzzy=true (datatable(TimeGenerated:datetime)[]), UpwindCatalogAssets_CL, UpwindLogsAssets_CL;
+UpwindSource
+| where TimeGenerated >= ago(lookback)
+| extend
+    AssetName = tostring(coalesce(column_ifexists("AssetName", ""), column_ifexists("name", ""))),
+    CloudProvider = tostring(coalesce(column_ifexists("CloudProvider", ""), column_ifexists("cloud_provider", ""))),
+    CloudAccountId = tostring(coalesce(column_ifexists("CloudAccountId", ""), column_ifexists("cloud_account_id", ""))),
+    Region = tostring(coalesce(column_ifexists("Region", ""), column_ifexists("region", ""))),
+    ResourceType = tostring(coalesce(column_ifexists("ResourceType", ""), column_ifexists("resource_type", ""))),
+    PublicIps = todynamic(tostring(coalesce(column_ifexists("PublicIpAddresses", ""), column_ifexists("public_ip_addresses", "")))),
+    SensitiveAtRest = todynamic(tostring(coalesce(column_ifexists("SensitiveDataAtRest", ""), column_ifexists("sensitive_data_at_rest", "")))),
+    SensitiveInTransit = todynamic(tostring(coalesce(column_ifexists("SensitiveDataInTransit", ""), column_ifexists("sensitive_data_in_transit", "")))),
+    DetectionRisk = todynamic(tostring(coalesce(column_ifexists("DetectionRisk", ""), column_ifexists("detection_risk", ""))))
+| extend
+    DetectionLevel = tostring(DetectionRisk.level),
+    DetectionScore = toint(DetectionRisk.score),
+    MitreTactic = tostring(DetectionRisk.mitre_tactic),
+    MitreTechnique = tostring(DetectionRisk.mitre_technique),
+    DetectionRule = tostring(DetectionRisk.rule),
+    HasPublicIp = array_length(PublicIps) > 0,
+    HasSensitive = tobool(SensitiveAtRest.has_sensitive_data) or tobool(SensitiveInTransit.has_sensitive_data)
+| where DetectionLevel in ("Critical", "High", "Medium")
+| extend TriageTier = case(
+    DetectionLevel == "Critical" and (HasPublicIp or HasSensitive), "Tier-1 Containment",
+    DetectionLevel == "Critical", "Tier-2 Investigate",
+    DetectionLevel == "High" and (HasPublicIp or HasSensitive), "Tier-2 Investigate",
+    "Tier-3 Watchlist"
+)
+| project TimeGenerated, AssetName, CloudProvider, CloudAccountId, Region, ResourceType, DetectionLevel, DetectionScore, DetectionRule, MitreTactic, MitreTechnique, HasPublicIp, HasSensitive, TriageTier
+| order by TriageTier asc, DetectionScore desc
+| take 50

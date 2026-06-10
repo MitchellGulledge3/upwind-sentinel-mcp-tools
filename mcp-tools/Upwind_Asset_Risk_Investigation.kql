@@ -1,0 +1,44 @@
+let lookback = 24h;
+let AssetNameInput = tolower(trim(@" ", "{AssetName}"));
+let UpwindSource = union isfuzzy=true (datatable(TimeGenerated:datetime)[]), UpwindCatalogAssets_CL, UpwindLogsAssets_CL;
+UpwindSource
+| where TimeGenerated >= ago(lookback)
+| extend
+    AssetName = tostring(coalesce(column_ifexists("AssetName", ""), column_ifexists("name", ""))),
+    AssetId = tostring(coalesce(column_ifexists("AssetId", ""), column_ifexists("id", ""))),
+    CloudProvider = tostring(coalesce(column_ifexists("CloudProvider", ""), column_ifexists("cloud_provider", ""))),
+    CloudAccountId = tostring(coalesce(column_ifexists("CloudAccountId", ""), column_ifexists("cloud_account_id", ""))),
+    CloudResourceId = tostring(coalesce(column_ifexists("CloudResourceId", ""), column_ifexists("cloud_resource_id", ""))),
+    Region = tostring(coalesce(column_ifexists("Region", ""), column_ifexists("region", ""))),
+    ResourceType = tostring(coalesce(column_ifexists("ResourceType", ""), column_ifexists("resource_type", ""))),
+    ProtectedBy = tostring(coalesce(column_ifexists("ProtectedBy", ""), column_ifexists("protected_by", ""))),
+    Status = tostring(coalesce(column_ifexists("Status", ""), column_ifexists("status", ""))),
+    Tags = todynamic(tostring(coalesce(column_ifexists("Tags", ""), column_ifexists("tags", "")))),
+    PublicIps = todynamic(tostring(coalesce(column_ifexists("PublicIpAddresses", ""), column_ifexists("public_ip_addresses", "")))),
+    PrivateIps = todynamic(tostring(coalesce(column_ifexists("PrivateIpAddresses", ""), column_ifexists("private_ip_addresses", "")))),
+    Technologies = todynamic(tostring(coalesce(column_ifexists("Technologies", ""), column_ifexists("technologies", "")))),
+    NetworkRisk = todynamic(tostring(coalesce(column_ifexists("NetworkRisk", ""), column_ifexists("network_risk", "")))),
+    DetectionRisk = todynamic(tostring(coalesce(column_ifexists("DetectionRisk", ""), column_ifexists("detection_risk", "")))),
+    VulnerabilityRisk = todynamic(tostring(coalesce(column_ifexists("VulnerabilityRisk", ""), column_ifexists("vulnerability_risk", "")))),
+    HighPrivilegeRisk = todynamic(tostring(coalesce(column_ifexists("HighPrivilegeRisk", ""), column_ifexists("high_privilege_risk", "")))),
+    SensitiveAtRest = todynamic(tostring(coalesce(column_ifexists("SensitiveDataAtRest", ""), column_ifexists("sensitive_data_at_rest", "")))),
+    SensitiveInTransit = todynamic(tostring(coalesce(column_ifexists("SensitiveDataInTransit", ""), column_ifexists("sensitive_data_in_transit", ""))))
+| where isnotempty(AssetNameInput) and (tolower(AssetName) contains AssetNameInput or tolower(CloudResourceId) contains AssetNameInput or tolower(AssetId) contains AssetNameInput)
+| extend
+    NetworkLevel = tostring(NetworkRisk.level),
+    DetectionLevel = tostring(DetectionRisk.level),
+    VulnerabilityLevel = tostring(VulnerabilityRisk.level),
+    PrivilegeLevel = tostring(HighPrivilegeRisk.level),
+    NetworkScore = toint(NetworkRisk.score),
+    DetectionScore = toint(DetectionRisk.score),
+    VulnerabilityScore = toint(VulnerabilityRisk.score),
+    PrivilegeScore = toint(HighPrivilegeRisk.score),
+    CveCount = toint(VulnerabilityRisk.cve_count),
+    HasKev = tobool(VulnerabilityRisk.has_kev),
+    HasPublicIp = array_length(PublicIps) > 0,
+    HasSensitiveAtRest = tobool(SensitiveAtRest.has_sensitive_data),
+    HasSensitiveInTransit = tobool(SensitiveInTransit.has_sensitive_data)
+| extend AggregateRiskScore = coalesce(NetworkScore, 0) + coalesce(DetectionScore, 0) + coalesce(VulnerabilityScore, 0) + coalesce(PrivilegeScore, 0) + iff(HasPublicIp, 15, 0) + iff(HasKev, 15, 0)
+| project TimeGenerated, AssetName, AssetId, CloudProvider, CloudAccountId, CloudResourceId, Region, ResourceType, ProtectedBy, Status, Tags, Technologies, PublicIps, PrivateIps, NetworkLevel, DetectionLevel, VulnerabilityLevel, PrivilegeLevel, CveCount, HasKev, HasSensitiveAtRest, HasSensitiveInTransit, AggregateRiskScore
+| order by AggregateRiskScore desc
+| take 25
