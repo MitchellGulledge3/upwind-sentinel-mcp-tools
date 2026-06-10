@@ -9,6 +9,8 @@ These tools are designed for agents that need precise, callable Sentinel capabil
 - **Schema compatibility:** tools normalize PascalCase fields (`AssetName`, `CloudProvider`, `NetworkRisk`) and lower snake_case fields (`name`, `cloud_provider`, `network_risk`).
 - **Dynamic risk objects:** tools read risk levels and scores from `NetworkRisk`, `DetectionRisk`, `VulnerabilityRisk`, `HighPrivilegeRisk`, `SensitiveDataAtRest`, and `SensitiveDataInTransit`.
 - **Missing-table behavior:** tools use `union isfuzzy=true` source aliases so alpha customers can publish/run them before every Upwind table is present.
+- **Migration caveat:** if both `UpwindCatalogAssets_CL` and `UpwindLogsAssets_CL` are populated, aggregate tools may count the same asset from both tables.
+- **Nested keys:** dynamic sub-property names such as `score`, `level`, `cve_count`, `has_kev`, `mitre_tactic`, `mitre_technique`, `rule`, `reason`, `has_sensitive_data`, and `types` should be confirmed against a real row in the target workspace.
 - **Authentication:** the consuming agent authenticates to Sentinel MCP; the tools themselves are read-only KQL.
 - **Workspace binding:** every tool requires `workspaceId`. The Sentinel custom MCP runtime uses that argument to bind the KQL execution target; the KQL files do not call `workspace("<id>")` directly.
 - **Parameter syntax:** Kqs tools use single-brace placeholders such as `{AssetName}` in `queryFormat`. The publisher detects those placeholders and declares matching tool arguments.

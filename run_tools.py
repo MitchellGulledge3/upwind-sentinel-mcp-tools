@@ -61,12 +61,12 @@ def extract_asset(message: str) -> str:
     quoted = re.search(r"['\"]([^'\"]+)['\"]", message)
     if quoted:
         return quoted.group(1)
-    fallback = os.getenv("UPWIND_ASSET_NAME")
-    if fallback:
-        return fallback
     match = re.search(r"\b(?:vm|pod|aks|eks|gke|prd|prod|dev|staging)[\w.-]*\b", message, re.IGNORECASE)
     if match:
         return match.group(0)
+    fallback = os.getenv("UPWIND_ASSET_NAME")
+    if fallback and not fallback.startswith("<"):
+        return fallback
     raise ValueError("Asset investigation requires a quoted asset value in the prompt or UPWIND_ASSET_NAME in the environment.")
 
 

@@ -13,6 +13,8 @@ The repo does **not** ingest or generate telemetry. It assumes the customer alre
 
 All tools query only Upwind tables. They do not join Defender, Entra, XDR, or any other Microsoft tables.
 
+If both `UpwindCatalogAssets_CL` and `UpwindLogsAssets_CL` are populated during a connector migration, aggregate tools may count the same asset from both tables. Prefer one production connector/table per workspace for clean counts.
+
 ## What this publishes
 
 `scripts/publish-mcp-tools.py` calls the Sentinel Platform Services authoring API and publishes each file in `mcp-tools/*.kql` as a Kqs custom MCP tool under one collection, defaulting to:
@@ -100,7 +102,8 @@ The script is idempotent: it tolerates an existing collection and uses `PUT` for
    SENTINEL_MCP_COLLECTION=Upwind-Sentinel-MCP-Tools
    MCP_DEFAULT_ARGUMENTS={"workspaceId":"<workspace-customer-id>"}
    MCP_TOOL_ARGUMENT_TEMPLATE={}
-   UPWIND_ASSET_NAME=<asset-name-or-resource-id>
+   # Optional fallback:
+   # UPWIND_ASSET_NAME=vm-web-prod-01
    ```
 
 3. Ask GitHub Copilot, Claude, or another coding agent to use this repo. Suggested prompt:
