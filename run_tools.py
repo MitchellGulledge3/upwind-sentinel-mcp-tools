@@ -15,6 +15,8 @@ from sentinel_mcp_tools.client import MCPToolResult, SentinelMCPClient
 
 
 UPWIND_TOOLS = {
+    "defender_context": "Defender_Exposure_Asset_Context",
+    "defender_relationships": "Defender_Exposure_Asset_Relationships",
     "posture": "Upwind_Cloud_Risk_Posture_Summary",
     "internet": "Upwind_Internet_Facing_Critical_Risk",
     "sensitive": "Upwind_Sensitive_Data_Exposure",
@@ -25,6 +27,8 @@ UPWIND_TOOLS = {
 }
 
 TOOL_ROUTES = [
+    (("relationship", "relationships", "attack path", "blast radius", "connected to", "edge"), UPWIND_TOOLS["defender_relationships"]),
+    (("defender", "exposure graph", "exposure management", "exposure context"), UPWIND_TOOLS["defender_context"]),
     (("asset", "workload", "resource", "vm ", "investigate"), UPWIND_TOOLS["asset"]),
     (("internet", "public", "exposed", "facing", "public ip"), UPWIND_TOOLS["internet"]),
     (("sensitive", "pii", "pci", "phi", "secret", "data exposure"), UPWIND_TOOLS["sensitive"]),
@@ -35,6 +39,8 @@ TOOL_ROUTES = [
 
 EXAMPLE_PROMPTS = [
     "Summarize Upwind cloud risk posture",
+    "Get Defender exposure context for vm-web-prod-01",
+    "Show Defender exposure relationships for vm-web-prod-01",
     "Show internet-facing critical Upwind risk",
     "Show Upwind sensitive data exposure",
     "Hunt high privilege Upwind risk",
@@ -64,7 +70,7 @@ def extract_asset(message: str) -> str:
     match = re.search(r"\b(?:vm|pod|aks|eks|gke|prd|prod|dev|staging)[\w.-]*\b", message, re.IGNORECASE)
     if match:
         return match.group(0)
-    fallback = os.getenv("UPWIND_ASSET_NAME")
+    fallback = os.getenv("ASSET_NAME") or os.getenv("UPWIND_ASSET_NAME")
     if fallback and not fallback.startswith("<"):
         return fallback
     raise ValueError("Asset investigation requires a quoted asset value in the prompt or UPWIND_ASSET_NAME in the environment.")
@@ -79,7 +85,11 @@ def render_arguments(message: str, tool_name: str, template: str, defaults: dict
     if not isinstance(args, dict):
         raise ValueError("MCP_TOOL_ARGUMENT_TEMPLATE must render to a JSON object.")
     merged = {**args, **defaults}
-    if tool_name == UPWIND_TOOLS["asset"]:
+    if tool_name in {
+        UPWIND_TOOLS["asset"],
+        UPWIND_TOOLS["defender_context"],
+        UPWIND_TOOLS["defender_relationships"],
+    }:
         merged.setdefault("AssetName", extract_asset(message))
     return merged
 

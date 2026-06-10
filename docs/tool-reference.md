@@ -5,7 +5,8 @@ These tools are designed for agents that need precise, callable Sentinel capabil
 ## Shared design choices
 
 - **Primary tables:** `UpwindCatalogAssets_CL` and `UpwindLogsAssets_CL`.
-- **Scope:** Upwind data only. No Defender, Entra, XDR, or other Microsoft security tables.
+- **Scope:** Upwind tools query Upwind tables only. Defender tools query Exposure Management tables only. The consuming agent correlates outputs by invoking both.
+- **Defender Exposure tables:** `ExposureGraphNodes` and `ExposureGraphEdges`.
 - **Schema compatibility:** tools normalize PascalCase fields (`AssetName`, `CloudProvider`, `NetworkRisk`) and lower snake_case fields (`name`, `cloud_provider`, `network_risk`).
 - **Dynamic risk objects:** tools read risk levels and scores from `NetworkRisk`, `DetectionRisk`, `VulnerabilityRisk`, `HighPrivilegeRisk`, `SensitiveDataAtRest`, and `SensitiveDataInTransit`.
 - **Missing-table behavior:** tools use `union isfuzzy=true` source aliases so alpha customers can publish/run them before every Upwind table is present.
@@ -27,6 +28,62 @@ These tools are designed for agents that need precise, callable Sentinel capabil
 4. Summarizes average risk scores, categories, resource types, accounts, and regions.
 
 **Best caller prompt:** "Summarize Upwind cloud risk posture."
+
+## `Defender_Exposure_Asset_Context`
+
+**Question answered:** "What does Microsoft Security Exposure Management know about this asset/entity?"
+
+**Required arguments:**
+
+```json
+{
+  "workspaceId": "<workspace-customer-id>",
+  "AssetName": "vm-web-prod-01"
+}
+```
+
+**What it does:**
+
+1. Searches `ExposureGraphNodes` by node name, entity IDs, and node properties.
+2. Returns node ID, name, label, categories, entity IDs, and raw node properties.
+3. Gives an agent the Defender Exposure node context for a later Upwind lookup.
+
+**Best caller prompt:** "Get Defender exposure context for vm-web-prod-01."
+
+## `Defender_Exposure_Asset_Relationships`
+
+**Question answered:** "What graph relationships and nearby attack-path context surround this asset/entity?"
+
+**Required arguments:**
+
+```json
+{
+  "workspaceId": "<workspace-customer-id>",
+  "AssetName": "vm-web-prod-01"
+}
+```
+
+**What it does:**
+
+1. Finds matching nodes in `ExposureGraphNodes`.
+2. Joins direct inbound and outbound edges from `ExposureGraphEdges`.
+3. Returns relationship direction, edge label, related node name/label/categories, and edge properties.
+
+**Best caller prompt:** "Show Defender exposure relationships for vm-web-prod-01."
+
+## Combined Defender + Upwind workflow
+
+For an asset-level investigation, call these tools separately:
+
+1. `Defender_Exposure_Asset_Context`
+2. `Defender_Exposure_Asset_Relationships`
+3. `Upwind_Asset_Risk_Investigation`
+
+Then have the consuming agent produce one response that clearly separates:
+
+- **Defender Exposure evidence:** graph node identity, categories, properties, and relationships.
+- **Upwind evidence:** runtime detections, vulnerabilities, high privilege, internet exposure, sensitive data, public/private IPs, technologies, and aggregate risk score.
+- **Recommended remediation:** network exposure reduction, privilege reduction, patch/KEV action, sensitive-data protection, and runtime containment if needed.
 
 ## `Upwind_Internet_Facing_Critical_Risk`
 

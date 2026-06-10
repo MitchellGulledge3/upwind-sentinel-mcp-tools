@@ -1,0 +1,65 @@
+let AssetName = tolower(trim(@" ", "{AssetName}"));
+let ExposureGraphNodesSource = union isfuzzy=true (
+    datatable(NodeId:string, NodeName:string, NodeLabel:string, Categories:dynamic, EntityIds:dynamic, NodeProperties:dynamic)[]
+), ExposureGraphNodes;
+let ExposureGraphEdgesSource = union isfuzzy=true (
+    datatable(
+        EdgeId:string,
+        EdgeLabel:string,
+        SourceNodeId:string,
+        SourceNodeName:string,
+        SourceNodeLabel:string,
+        SourceNodeCategories:dynamic,
+        TargetNodeId:string,
+        TargetNodeName:string,
+        TargetNodeLabel:string,
+        TargetNodeCategories:dynamic,
+        EdgeProperties:dynamic
+    )[]
+), ExposureGraphEdges;
+let MatchedNodes =
+    ExposureGraphNodesSource
+    | where isnotempty(AssetName)
+    | where tolower(NodeName) contains AssetName
+        or tolower(tostring(EntityIds)) contains AssetName
+        or tolower(tostring(NodeProperties)) contains AssetName
+    | project MatchedNodeId = NodeId, MatchedNodeName = NodeName, MatchedNodeLabel = NodeLabel;
+let OutboundEdges =
+    MatchedNodes
+    | join kind=inner (
+        ExposureGraphEdgesSource
+        | project
+            MatchedNodeId = SourceNodeId,
+            EdgeDirection = "outbound",
+            EdgeLabel,
+            RelatedNodeId = TargetNodeId,
+            RelatedNodeName = TargetNodeName,
+            RelatedNodeLabel = TargetNodeLabel,
+            RelatedNodeCategories = TargetNodeCategories,
+            EdgeProperties
+    ) on MatchedNodeId;
+let InboundEdges =
+    MatchedNodes
+    | join kind=inner (
+        ExposureGraphEdgesSource
+        | project
+            MatchedNodeId = TargetNodeId,
+            EdgeDirection = "inbound",
+            EdgeLabel,
+            RelatedNodeId = SourceNodeId,
+            RelatedNodeName = SourceNodeName,
+            RelatedNodeLabel = SourceNodeLabel,
+            RelatedNodeCategories = SourceNodeCategories,
+            EdgeProperties
+    ) on MatchedNodeId;
+union OutboundEdges, InboundEdges
+| project
+    MatchedNodeName,
+    MatchedNodeLabel,
+    EdgeDirection,
+    EdgeLabel,
+    RelatedNodeName,
+    RelatedNodeLabel,
+    RelatedNodeCategories,
+    EdgeProperties
+| take 100

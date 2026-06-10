@@ -4,14 +4,14 @@ Alpha-ready custom MCP tool collection for Upwind cloud asset risk data in Micro
 
 This repository is for an Upwind ISV developer, partner engineer, or joint customer team that wants an agent surface such as GitHub Copilot in VS Code, Copilot Studio, Foundry, Security Copilot, or a product-owned agent to call focused Upwind investigation tools over Sentinel data.
 
-The repo does **not** ingest or generate telemetry. It assumes the customer already has an Upwind Sentinel connector sending production Upwind cloud-asset data into Sentinel:
+The repo does **not** ingest or generate telemetry. It assumes the customer already has an Upwind Sentinel connector sending production Upwind cloud-asset data into Sentinel. It also includes separate Defender Exposure Management graph tools so an agent can call Defender and Upwind tools independently and combine the results.
 
 | Upwind source | Sentinel table queried by these tools | Required signal |
 | --- | --- | --- |
 | Upwind Catalog Loader / Upwind asset connector | `UpwindCatalogAssets_CL` | PascalCase fields such as `AssetName`, `CloudProvider`, `CloudAccountId`, `Region`, `ResourceType`, `PublicIpAddresses`, `NetworkRisk`, `DetectionRisk`, `VulnerabilityRisk`, `HighPrivilegeRisk`, `SensitiveDataAtRest`, `SensitiveDataInTransit` |
 | Earlier Upwind asset table naming | `UpwindLogsAssets_CL` | Same logical fields, often lower snake_case such as `name`, `cloud_provider`, `network_risk`, `public_ip_addresses` |
 
-All tools query only Upwind tables. They do not join Defender, Entra, XDR, or any other Microsoft tables.
+The Upwind tools query only Upwind tables. The Defender tools query only Microsoft Security Exposure Management advanced hunting tables. No individual tool joins Upwind and Defender data; the consuming agent performs the correlation by invoking both tool families.
 
 If both `UpwindCatalogAssets_CL` and `UpwindLogsAssets_CL` are populated during a connector migration, aggregate tools may count the same asset from both tables. Prefer one production connector/table per workspace for clean counts.
 
@@ -33,6 +33,8 @@ https://sentinel.microsoft.com/mcp/custom/Upwind-Sentinel-MCP-Tools/
 
 | Tool | Main table(s) | What it answers |
 | --- | --- | --- |
+| `Defender_Exposure_Asset_Context` | `ExposureGraphNodes` | What does Microsoft Security Exposure Management know about this asset/entity? |
+| `Defender_Exposure_Asset_Relationships` | `ExposureGraphNodes`, `ExposureGraphEdges` | What direct inbound/outbound graph relationships and attack-path context surround this asset/entity? |
 | `Upwind_Cloud_Risk_Posture_Summary` | `UpwindCatalogAssets_CL`, `UpwindLogsAssets_CL` | What is the 24h Upwind posture: assets, critical/high risk, internet exposure, sensitive data, unprotected assets, risk scores, providers, accounts, and regions? |
 | `Upwind_Internet_Facing_Critical_Risk` | same | Which internet-facing Upwind assets have critical/high network, vulnerability, or runtime detection risk? |
 | `Upwind_Sensitive_Data_Exposure` | same | Which assets contain sensitive data and also have internet exposure, no protection, vulnerabilities, detections, or privilege risk? |
@@ -47,13 +49,14 @@ For detailed usage, input arguments, KQL strategy, and expected output shape, se
 
 1. A Microsoft Sentinel workspace with Sentinel Platform Services / data lake enabled.
 2. Production Upwind data already flowing into `UpwindCatalogAssets_CL` or `UpwindLogsAssets_CL`.
-3. Azure CLI authenticated to the tenant that owns the Sentinel workspace:
+3. Microsoft Defender XDR / Microsoft Security Exposure Management advanced hunting access if you want to use `Defender_Exposure_*` tools.
+4. Azure CLI authenticated to the tenant that owns the Sentinel workspace:
    ```bash
    az login
    az account set --subscription "<subscription-id-or-name>"
    ```
-4. Permission to author custom MCP collections in Sentinel Platform Services.
-5. Python 3.9+.
+5. Permission to author custom MCP collections in Sentinel Platform Services.
+6. Python 3.9+.
 
 This is an alpha/private-preview style surface. The publisher and runtime both use the Sentinel Platform Services resource ID `4500ebfb-89b6-4b14-a480-7f749797bfcd`. In practice:
 
@@ -103,7 +106,7 @@ The script is idempotent: it tolerates an existing collection and uses `PUT` for
    MCP_DEFAULT_ARGUMENTS={"workspaceId":"<workspace-customer-id>"}
    MCP_TOOL_ARGUMENT_TEMPLATE={}
    # Optional fallback:
-   # UPWIND_ASSET_NAME=vm-web-prod-01
+   # ASSET_NAME=vm-web-prod-01
    ```
 
 3. Ask GitHub Copilot, Claude, or another coding agent to use this repo. Suggested prompt:
@@ -111,12 +114,15 @@ The script is idempotent: it tolerates an existing collection and uses `PUT` for
    Look at this repository and help me install and run the Upwind Sentinel custom MCP tools locally.
    Use scripts/publish-mcp-tools.py to publish the tools through the Sentinel Platform Services API,
    then use run_tools.py to call the custom MCP endpoint from this machine.
-   Keep the tools scoped only to Upwind tables.
+   Publish the Upwind tools and Defender Exposure tools as separate tools.
+   Show how an agent can call Defender_Exposure_Asset_Context and Upwind_Asset_Risk_Investigation for the same asset.
    ```
 
 4. Run a tool through the local terminal runner:
    ```bash
    python3 run_tools.py --prompt "Summarize Upwind cloud risk posture" --show-raw
+   python3 run_tools.py --prompt "Get Defender exposure context for vm-web-prod-01" --show-raw
+   python3 run_tools.py --prompt "Show Defender exposure relationships for vm-web-prod-01" --show-raw
    python3 run_tools.py --prompt "Show internet-facing critical Upwind risk" --show-raw
    python3 run_tools.py --prompt "Investigate Upwind asset vm-web-prod-01" --show-raw
    ```
@@ -143,7 +149,9 @@ Then open `.vscode/mcp.json` in VS Code, start the MCP server from the CodeLens/
 
 ```text
 Use the Upwind Sentinel MCP tools to summarize cloud risk posture for workspace <workspace-customer-id>.
+Use Defender_Exposure_Asset_Context for asset vm-web-prod-01 in workspace <workspace-customer-id>.
 Use Upwind_Asset_Risk_Investigation for asset vm-web-prod-01 in workspace <workspace-customer-id>.
+Call Defender_Exposure_Asset_Context and Upwind_Asset_Risk_Investigation for vm-web-prod-01, then summarize Defender exposure context alongside Upwind runtime risk.
 ```
 
 ## Configure an MCP-capable agent
@@ -162,7 +170,7 @@ At runtime, every tool requires:
 }
 ```
 
-`Upwind_Asset_Risk_Investigation` also requires:
+The asset-specific Defender and Upwind tools also require:
 
 ```json
 {
@@ -189,6 +197,7 @@ At runtime, every tool requires:
 
 - The tools are read-only KQL tools.
 - They query the last 24 hours by design.
-- They are intentionally scoped to Upwind data and do not try to become a general CNAPP chatbot.
+- The Upwind tools are intentionally scoped to Upwind data and do not try to become a general CNAPP chatbot.
+- Defender Exposure tools are intentionally separate from Upwind tools; agent instructions should call both when a use case needs Microsoft exposure graph context plus Upwind runtime risk.
 - If a workspace has no Upwind rows in either `UpwindCatalogAssets_CL` or `UpwindLogsAssets_CL`, the tools execute but return zero-row or zero-count output.
 - The tools tolerate both PascalCase and lower snake_case Upwind asset schemas where possible.

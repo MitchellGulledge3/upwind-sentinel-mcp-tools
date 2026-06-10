@@ -1,0 +1,17 @@
+let AssetName = tolower(trim(@" ", "{AssetName}"));
+let ExposureGraphNodesSource = union isfuzzy=true (
+    datatable(NodeId:string, NodeName:string, NodeLabel:string, Categories:dynamic, EntityIds:dynamic, NodeProperties:dynamic)[]
+), ExposureGraphNodes;
+ExposureGraphNodesSource
+| where isnotempty(AssetName)
+| where tolower(NodeName) contains AssetName
+    or tolower(tostring(EntityIds)) contains AssetName
+    or tolower(tostring(NodeProperties)) contains AssetName
+| project
+    NodeId,
+    NodeName,
+    NodeLabel,
+    Categories,
+    EntityIds,
+    NodeProperties
+| take 25

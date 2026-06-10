@@ -15,6 +15,8 @@ SENTINEL_RESOURCE_ID = "4500ebfb-89b6-4b14-a480-7f749797bfcd"
 API_BASE = "https://api.securityplatform.microsoft.com/aiprimitives/mcpToolCollections"
 
 DESCRIPTIONS = {
+    "Defender_Exposure_Asset_Context": "Retrieve Microsoft Security Exposure Management graph node context for a supplied asset name, VM name, cloud resource ID, or other known entity identifier.",
+    "Defender_Exposure_Asset_Relationships": "Retrieve direct inbound and outbound Microsoft Security Exposure Management graph relationships for a supplied asset so an agent can reason over attack-path context.",
     "Upwind_Cloud_Risk_Posture_Summary": "Summarize production Upwind cloud asset posture: assets, critical/high risk, internet exposure, sensitive data, unprotected assets, risk scores, providers, accounts, and regions.",
     "Upwind_Internet_Facing_Critical_Risk": "Find internet-facing Upwind assets with critical or high network, vulnerability, or detection risk and show public IPs, technologies, and combined risk score.",
     "Upwind_Sensitive_Data_Exposure": "Surface Upwind assets with sensitive data at rest or in transit, joined to network, detection, vulnerability, privilege, internet exposure, and protection context.",
@@ -25,7 +27,7 @@ DESCRIPTIONS = {
 }
 
 ARGUMENT_DESCRIPTIONS = {
-    "AssetName": "Upwind asset name, cloud resource ID, asset ID, VM name, workload name, or identifying substring to investigate.",
+    "AssetName": "Asset name, cloud resource ID, VM name, workload name, or other identifying substring to investigate.",
 }
 
 PLACEHOLDER_PATTERN = re.compile(r"(?<!{){\s*([A-Za-z_][A-Za-z0-9_]*)\s*}(?!})")
@@ -104,8 +106,8 @@ def main() -> int:
 
     collection_payload = {
         "name": args.collection,
-        "title": "Upwind Sentinel Custom MCP Tools",
-        "description": "Custom Sentinel MCP tools for production Upwind cloud asset risk posture, internet exposure, sensitive data, privilege risk, vulnerabilities, runtime detections, and asset investigation.",
+        "title": "Upwind and Defender Exposure Sentinel Custom MCP Tools",
+        "description": "Custom Sentinel MCP tools for production Upwind cloud asset risk plus separate Defender Exposure Management graph context. Agents can call both tool families to combine exposure and runtime-risk evidence.",
     }
     print(f"Publishing collection: {args.collection}")
     if args.dry_run:
