@@ -2,6 +2,7 @@ let lookback = 24h;
 let UpwindSource = union isfuzzy=true (datatable(TimeGenerated:datetime)[]), UpwindCatalogAssets_CL, UpwindLogsAssets_CL;
 UpwindSource
 | where TimeGenerated >= ago(lookback)
+| summarize arg_max(TimeGenerated, *) by _AssetId = tostring(coalesce(column_ifexists("AssetId", ""), column_ifexists("id", "")))
 | extend
     AssetName = tostring(coalesce(column_ifexists("AssetName", ""), column_ifexists("name", ""))),
     CloudProvider = tostring(coalesce(column_ifexists("CloudProvider", ""), column_ifexists("cloud_provider", ""))),
